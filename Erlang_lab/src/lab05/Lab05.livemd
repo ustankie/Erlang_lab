@@ -1,0 +1,160 @@
+# Elixir data loader
+
+## Section
+
+```elixir
+data_list = File.read!("/data/Erlang_lab/src/lab05/AirlyData-ALL-50k.csv") |> String.split("\n")
+
+IO.puts(hd(data_list))
+
+data_list |> StationIdentifier.identifyStations() |> length()
+
+station_map = data_list |> StationIdentifier.identifyStations()
+data_list |> StationIdentifier.identifyTypes()
+
+#
+measures =
+  data_list |> Enum.filter(&(String.length(&1) > 0)) |> Enum.map(&ParserLoader.parse_line/1)
+
+# 100 stacji? -> 86
+```
+
+```elixir
+defmodule ParserLoader do
+  def parse_line(line) do
+    [datetime, pollutionType, pollutionLevel, stationId, stationName, location] =
+      String.split(line, ";")
+
+    [date, time] = datetime |> String.split("T")
+
+    %{
+      :datetime =>
+        {date
+         |> String.split("-")
+         |> Enum.map(&String.to_integer/1)
+         |> List.to_tuple(),
+         time
+         |> String.slice(0..7)
+         |> String.split(":")
+         |> Enum.map(&String.to_integer/1)
+         |> List.to_tuple()},
+      :location =>
+        location
+        |> String.split(",")
+        |> Enum.map(&String.to_float/1)
+        |> :erlang.list_to_tuple(),
+      :stationId =>
+        stationId
+        |> String.to_integer(),
+      :stationName => stationName,
+      :pollutionType => pollutionType,
+      :pollutionLevel => pollutionLevel |> String.to_float()
+    }
+  end
+end
+```
+
+```elixir
+defmodule StationIdentifier do
+  def identifyStations(stationMap) do
+    stationMap
+    |> Enum.filter(&(String.length(&1) > 0))
+    |> Enum.map(&ParserLoader.parse_line/1)
+    |> Enum.uniq_by(& &1.location)
+  end
+
+  def identifyTypes(stationMap) do
+    stationMap
+    |> Enum.filter(&(String.length(&1) > 0))
+    |> Enum.map(&ParserLoader.parse_line/1)
+    |> Enum.uniq_by(& &1.pollutionType)
+  end
+end
+```
+
+```elixir
+# :observer.start()
+Code.append_path("/data/first_app/_build/default/lib/first_app/ebin")
+
+Application.start(:first_app)
+```
+
+```elixir
+# Create stations
+time_taken =
+  :timer.tc(fn ->
+    for x <- station_map do
+      :pollution_gen_server.add_station("#{x.stationName}#{x.stationId}", x.location)
+    end
+  end)
+```
+
+```elixir
+time_taken =
+  :timer.tc(fn ->
+    for x <- measures do
+      :pollution_gen_server.add_value(
+        x.location,
+        x.datetime,
+        String.to_charlist(x.pollutionType),
+        x.pollutionLevel
+      )
+    end
+  end)
+  |> elem(0)
+
+# time_taken =
+#   :timer.tc(fn ->
+#     for x <- measures, x.pollutionType == "PM10" do
+#       :pollution_gen_server.add_value(
+#         x.location,
+#         x.datetime,
+#         String.to_charlist(x.pollutionType),
+#         x.pollutionLevel
+#       )
+#     end
+#   end)
+```
+
+```elixir
+time_taken =
+  :timer.tc(fn ->
+    :pollution_gen_server.get_station_mean(
+      "Polska, Kraków, Studencka9910",
+      String.to_charlist("PM10")
+    )
+  end)
+```
+
+```elixir
+time_taken =
+  :timer.tc(fn ->
+    :pollution_gen_server.get_daily_mean(String.to_charlist("PM25"), {2024, 2, 10})
+  end)
+```
+
+```elixir
+defmodule PollutionDataLoader do
+  def add_all_stations(station_map) do
+    for x <- station_map do
+      :pollution_gen_server.add_station("#{x.stationName}#{x.stationId}", x.location)
+    end
+  end
+
+  def add_all_values(measures) do
+    for x <- measures do
+      :pollution_gen_server.add_value(
+        x.location,
+        x.datetime,
+        String.to_charlist(x.pollutionType),
+        x.pollutionLevel
+      )
+    end
+  end
+end
+```
+
+```elixir
+PollutionDataLoader.add_all_stations(station_map)
+PollutionDataLoader.add_all_values(measures)
+```

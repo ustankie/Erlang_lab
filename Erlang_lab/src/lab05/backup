@@ -1,0 +1,44 @@
+
+data_list=File.read!("/data/lab05/AirlyData-ALL-50k.csv")|>String.split("\n")
+
+IO.puts(hd data_list)
+
+data_list |>StationIdentifier.identifyStations()|>length()
+
+#100 stacji? -> 86
+
+defmodule ParserLoader do
+  def parse_line line do
+    [datetime,pollutionType,pollutionLevel,stationId,stationName,location]=String.split(line,";")
+    [date,time]=datetime|>String.split("T")
+    %{:datetime =>{date|>String.split("-")
+                      |>Enum.map(&String.to_integer/1)
+                      |>List.to_tuple(),
+                  time
+                      |>String.slice(0..7)
+                      |>String.split(":")
+                      |>Enum.map(&String.to_integer/1)
+                      |>List.to_tuple()},
+          
+      :location=>location
+                |>String.split(",")
+                |>Enum.map(&String.to_float/1)
+                |>:erlang.list_to_tuple(),
+      :stationId=>stationId
+                |>String.to_integer(),
+      :stationName => stationName,
+      :pollutionType =>pollutionType,
+      :pollutionLevel => pollutionLevel |> String.to_float()
+    
+  end
+end
+
+defmodule StationIdentifier do
+  def identifyStations stationMap do
+    stationMap
+        |>Enum.filter(& String.length(&1)>0)
+        |> Enum.map(&ParserLoader.parse_line/1)
+        |>Enum.uniq_by(& &1.location)
+  end
+end
+
